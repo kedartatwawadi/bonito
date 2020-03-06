@@ -12,7 +12,7 @@ from argparse import ArgumentDefaultsHelpFormatter
 
 from bonito.model import Model
 from bonito.util import load_data, init
-from bonito.training import ChunkDataSet, train, test
+from bonito.training_multi_gpu import ChunkDataSet, train, test
 from collections import OrderedDict
 
 import toml
@@ -72,6 +72,8 @@ def main(args):
    
         model.load_state_dict(new_state_dict)
 
+    if torch.cuda.device_count() > 1: 
+        model = torch.nn.DataParallel(model) #enabling data parallelism
     
     model.to(device)
     model.train()
@@ -140,6 +142,7 @@ def argparser():
     parser.add_argument("--directory", default=None)
     parser.add_argument("--test_directory", default=None)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--multi_gpu", action="store_true", default=False)
     parser.add_argument("--lr", default=1e-3, type=float)
     parser.add_argument("--seed", default=25, type=int)
     parser.add_argument("--epochs", default=100, type=int)
