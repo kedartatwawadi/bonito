@@ -13,6 +13,7 @@ from argparse import ArgumentDefaultsHelpFormatter
 from bonito.model import Model
 from bonito.util import load_data, init
 from bonito.training import ChunkDataSet, train, test
+from collections import OrderedDict
 
 import toml
 import torch
@@ -39,9 +40,17 @@ def main(args):
     print("[loading data]")
     chunks, chunk_lengths, targets, target_lengths = load_data(limit=args.chunks, shuffle=True, directory=args.directory)
 
-    split = np.floor(chunks.shape[0] * args.validation_split).astype(np.int32)
-    train_dataset = ChunkDataSet(chunks[:split], chunk_lengths[:split], targets[:split], target_lengths[:split])
-    test_dataset = ChunkDataSet(chunks[split:], chunk_lengths[split:], targets[split:], target_lengths[split:])
+    if args.test_directory:
+        test_chunks, test_chunk_lengths, test_targets, test_target_lengths = load_data(limit=args.test_chunks, shuffle=True, directory=args.test_directory)
+        train_dataset = ChunkDataSet(chunks, chunk_lengths, targets, target_lengths)
+        test_dataset = ChunkDataSet(test_chunks, test_chunk_lengths, test_targets, test_target_lengths)
+    else:
+        split = np.floor(chunks.shape[0] * args.validation_split).astype(np.int32)
+        train_dataset = ChunkDataSet(chunks[:split], chunk_lengths[:split], targets[:split], target_lengths[:split])
+        test_dataset = ChunkDataSet(chunks[split:], chunk_lengths[split:], targets[split:], target_lengths[split:])
+                
+
+
     train_loader = DataLoader(train_dataset, batch_size=args.batch, shuffle=True, num_workers=4, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=args.batch, num_workers=4, pin_memory=True)
 
@@ -52,7 +61,17 @@ def main(args):
     model = Model(config)
 
     weights = os.path.join(workdir, 'weights.tar')
-    if os.path.exists(weights): model.load_state_dict(torch.load(weights))
+
+    
+    if os.path.exists(weights):
+        state_dict = torch.load(weights)
+ 
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k.replace('module.', '')
+            new_state_dict[name] = v
+   
+        model.load_state_dict(new_state_dict)
 
     model.to(device)
     model.train()
@@ -71,13 +90,16 @@ def main(args):
 
     schedular = CosineAnnealingLR(optimizer, args.epochs * len(train_loader))
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(0, args.epochs + 1):
 
+        # initialize duration train_loss
+        train_loss = '-1'
+        duration = '-1'
+
+        # Run val
         try:
-            train_loss, duration = train(
-                model, device, train_loader, optimizer, use_amp=args.amp
-            )
             val_loss, val_mean, val_median = test(model, device, test_loader)
+        
         except KeyboardInterrupt:
             break
 
@@ -98,6 +120,13 @@ def main(args):
                 train_loss, val_loss, val_mean, val_median,
             ])
 
+        try:
+            train_loss, duration = train(
+                model, device, train_loader, optimizer, use_amp=args.amp
+            )
+        except KeyboardInterrupt:
+            break
+
         schedular.step()
 
 
@@ -109,12 +138,14 @@ def argparser():
     parser.add_argument("training_directory")
     parser.add_argument("config")
     parser.add_argument("--directory", default=None)
+    parser.add_argument("--test_directory", default=None)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--lr", default=1e-3, type=float)
     parser.add_argument("--seed", default=25, type=int)
-    parser.add_argument("--epochs", default=400, type=int)
-    parser.add_argument("--batch", default=32, type=int)
+    parser.add_argument("--epochs", default=100, type=int)
+    parser.add_argument("--batch", default=64, type=int)
     parser.add_argument("--chunks", default=1000000, type=int)
+    parser.add_argument("--test_chunks", default=10000, type=int)
     parser.add_argument("--validation_split", default=0.99, type=float)
     parser.add_argument("--amp", action="store_true", default=False)
     parser.add_argument("-f", "--force", action="store_true", default=False)

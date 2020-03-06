@@ -95,33 +95,11 @@ def main(args):
 
         # first chunk
         seq_starts = 0
-        seq_ends = np.random.randint(args.min_seq_len, args.max_seq_len)
-
-        repick = int((args.max_seq_len - args.min_seq_len) / 2)
-        while boundary(reference[seq_starts:seq_ends]) and repick:
-            seq_ends = seq_starts + np.random.randint(args.min_seq_len, args.max_seq_len)
-            seq_ends = min(seq_ends, sequence_length)
-            repick -= 1
+        seq_ends = min(sequence_length, args.max_seq_len)
+        seq_ends = max(sequence_length, args.min_seq_len)
 
         chunk_idxs = [(seq_starts, seq_ends)]
 
-        # variable size chunks with overlap
-        while seq_ends < sequence_length - args.min_seq_len:
-
-            # overlap chunks with +/- 3% of max seq len
-            overlap = np.int32(args.max_seq_len * 0.03)
-
-            seq_starts = seq_ends + np.random.randint(-overlap, overlap)
-            seq_ends = seq_starts + np.random.randint(args.min_seq_len, args.max_seq_len)
-            seq_ends = min(seq_ends, sequence_length)
-
-            repick = int((args.max_seq_len - args.min_seq_len) / 2)
-            while boundary(reference[seq_starts:seq_ends]) and repick:
-                seq_ends = seq_starts + np.random.randint(args.min_seq_len, args.max_seq_len)
-                seq_ends = min(seq_ends, sequence_length)
-                repick -= 1
-
-            chunk_idxs.append((seq_starts, seq_ends))
 
         for start, end in chunk_idxs:
 
@@ -140,27 +118,15 @@ def main(args):
 
             samples_per_base = squiggle_length / reference_length
 
-            if samples_per_base < args.min_samples_per_base:
-                min_bases += 1
-                continue
-
-            if samples_per_base > args.max_samples_per_base:
-                max_bases += 1
-                continue
 
             if squiggle_end > squiggle_duration:
                 off_the_end_sig += 1
                 continue
 
-            longest_run = max(len(list(run)) for label, run in groupby(reference[start:end]))
-
-            if longest_run < args.min_run:
-                min_run_count += 1
+            
+            if squiggle_length > args.max_samples_per_base*args.max_seq_len:
+                max_bases += 1
                 continue
-
-            if boundary(reference[start:end]):
-                homopolymer_boundary += 1
-                # continue - include the chunk anyway
 
             chunks[chunk_count, :squiggle_length] = samples[squiggle_start:squiggle_end]
             chunk_lengths[chunk_count] = squiggle_length
@@ -217,8 +183,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", default=25, type=int)
     parser.add_argument("--chunks", default=10000000, type=int)
     parser.add_argument("--min-run", default=5, type=int)
-    parser.add_argument("--min-seq-len", default=80, type=int)
-    parser.add_argument("--max-seq-len", default=200, type=int)
+    parser.add_argument("--min-seq-len", default=120, type=int)
+    parser.add_argument("--max-seq-len", default=170, type=int)
     parser.add_argument("--min-samples-per-base", default=8, type=int)
-    parser.add_argument("--max-samples-per-base", default=12, type=int)
+    parser.add_argument("--max-samples-per-base", default=20, type=int)
     main(parser.parse_args())
