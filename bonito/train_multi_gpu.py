@@ -92,11 +92,13 @@ def main(args):
 
     schedular = CosineAnnealingLR(optimizer, args.epochs * len(train_loader))
 
+    # initialize duration train_loss
+    train_loss = '-1'
+    duration = '-1'
+
+
     for epoch in range(0, args.epochs + 1):
 
-        # initialize duration train_loss
-        train_loss = '-1'
-        duration = '-1'
 
         # Run val
         try:
